@@ -1,0 +1,13 @@
+--- #YAML:1.0
+name:                Chemistry-File-InternalCoords
+version:             0.01
+abstract:            Internal coordinates (z-matrix) molecule format reader/writer
+license:             unknown
+generated_by:        ExtUtils::MakeMaker version 6.30_01
+author:              David Westbrook <dwestbrook@gmail.com>
+distribution_type:   module
+requires:     
+    Test::More:                    0
+meta-spec:
+    url: <http://module-build.sourceforge.net/META-spec-new.html>;
+    version: 1.1
