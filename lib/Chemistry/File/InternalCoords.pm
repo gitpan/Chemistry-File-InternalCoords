@@ -3,7 +3,7 @@ package Chemistry::File::InternalCoords;
 use warnings;
 use strict;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use base qw(Chemistry::File);
 
@@ -62,46 +62,64 @@ sub parse_string {
 sub write_string {
     my ($class, $mol, %opts) = @_;
 
-    %opts = (symbol => 1, vars => 1, bfs => 0, sort => 1, %opts);
+    %opts = (symbol => 1, vars => 1, bfs => 0, sort => 1, skip_build=>0, %opts);
 
-    build_zmat($mol, %opts);
+    build_zmat($mol, %opts) unless $opts{skip_build};
 
-    my $s = '';
-    my ( @B, @A, @D );
-    my %index;
+    my $s = '';  # final output string
+
+    # these store the variables (if vars is on).  e.g. B1 is $bonds[0], A3 is $angles[2], D2 is $dihedrals[1]
+    my ( @bonds, @angles, @dihedrals );
+
+    my %index;    # used to map the atom's id to atom number
+
     foreach my $i ( 1 .. scalar $mol->atoms ){
         my $atom = $mol->atoms($i);
-	$index{ $atom->id } = $i;
-        my $ic = $atom->internal_coords;
-        my @ic = ($ic->distance, $ic->angle, $ic->dihedral);
+        $index{ $atom->id } = $i;
+        my $ic = $atom->internal_coords;  # Chemistry::InternalCoords object
+
+        # gets an array of 0, 2, 4 or 6 elements (usually 6)
+        my @ic = (
+                $ic->distance,  # (atom,distance)
+                $ic->angle,     # (atom,angle)
+                $ic->dihedral,  # (atom,dihedral)
+        );
+        pop @ic while @ic && !defined $ic[-1];  # remove trailing undef's
+
         if( $opts{vars} ){
-          if(defined $ic[1]){
-            push @B, $ic[1];
-            $ic[1] = 'B'.scalar(@B);
-          }
-          if(defined $ic[3]){
-            push @A, $ic[3];
-            $ic[3] = 'A'.scalar(@A);
-          }
-          if(defined $ic[5]){
-            push @D, $ic[5];
-            $ic[5] = 'D'.scalar(@D);
+          SWITCH: {   # need this since not all atoms have bond/angle/dihedral info
+            last SWITCH unless @ic > 0;
+            push @bonds,     $ic[1];         # store value
+            $ic[1] = 'B'.scalar(@bonds);     # rewrite as var name
+
+            last SWITCH unless @ic > 2;
+            push @angles,     $ic[3];        # store value
+            $ic[3] = 'A'.scalar(@angles);    # rewrite as var name
+
+            last SWITCH unless @ic > 4;
+            push @dihedrals,     $ic[5];     # store value
+            $ic[5] = 'D'.scalar(@dihedrals); # rewrite as var name
           }
         }else{
-          $_ = sprintf "%.8f", $_ for @ic[ grep {defined $ic[$_]} 1,3,5 ];
+          # number-format each of the values
+          $_ = sprintf "%.8f", $_ for @ic[ grep {$_<@ic} 1,3,5 ];
         }
-        $_ = $index{ $_->id } for @ic[ grep {defined $ic[$_]} 0,2,4 ];
-        pop @ic while( @ic && !defined $ic[-1] );
+
+        # change all atom names/ids into atom number
+        $_ = $index{ $_->id } for @ic[ grep {$_<@ic} 0,2,4 ];
+
+        # build the atom's output line
         $s .= sprintf "%-2s" . " %5d %15s" x int(@ic/2) . "\n",
                 $opts{symbol} ? $atom->symbol : $atom->Z,
                 @ic,
         ;
     }
     if( $opts{vars} ){
+      # provide the variable definitions
       $s .= "\n";
-      $s .= join "", map { sprintf "  B%-4d %25.8f\n", $_+1, $B[$_] } 0..$#B;
-      $s .= join "", map { sprintf "  A%-4d %25.8f\n", $_+1, $A[$_] } 0..$#A;
-      $s .= join "", map { sprintf "  D%-4d %25.8f\n", $_+1, $D[$_] } 0..$#D;
+      $s .= join "", map { sprintf "  B%-4d %25.8f\n", $_+1, $bonds[$_]     } 0..$#bonds;
+      $s .= join "", map { sprintf "  A%-4d %25.8f\n", $_+1, $angles[$_]    } 0..$#angles;
+      $s .= join "", map { sprintf "  D%-4d %25.8f\n", $_+1, $dihedrals[$_] } 0..$#dihedrals;
     }
 
     return $s;
@@ -117,7 +135,7 @@ Chemistry::File::InternalCoords - Internal coordinates (z-matrix) molecule forma
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =head1 SYNOPSIS
 
@@ -171,7 +189,23 @@ Expects a plain zmatrix format. Variables are support. No special options.
 
 =item write_string
 
-Creates a plain zmatrix formatted string. Any options are also passed to L<Chemistry::InternalCoords::Builder>'s I<build_zmat> function (defaults to bfs off and sort on).  Also recognizes I<symbol> (default on; if on uses the element instead of the atomic number) and I<vars> (default on; if on uses variables for the bond lengths & angles) options, which affect the output.
+Creates a plain zmatrix formatted string. Any options are also passed to L<Chemistry::InternalCoords::Builder>'s I<build_zmat> function (defaults to bfs off and sort on).  Also recognizes these options that affect the output:
+
+=over 2
+
+=item symbol
+
+If on (default) uses the element instead of the atomic number
+
+=item vars
+
+if on (default) uses variables for the bond lengths & angles) options, which affect the output.
+
+=item skip_build
+
+if on (defaults to off) it will assume that the internal_coords for all the atoms are already set, and will NOT call I<build_zmat> to generate everything.
+
+=back
 
 =back
 
@@ -203,7 +237,7 @@ L<http://www.perlmol.org/>
 
 =head1 AUTHOR
 
-David Westbrook, C<< <dwestbrook at gmail.com> >>
+David Westbrook (davidrw), C<< <dwestbrook at gmail.com> >>
 
 =head1 BUGS
 
