@@ -3,7 +3,7 @@ package Chemistry::File::InternalCoords;
 use warnings;
 use strict;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use base qw(Chemistry::File);
 
@@ -34,7 +34,20 @@ sub parse_string {
     my @lines = split /(?:\n|\r\n?)/, $s_vars;
     my %vars;
     foreach (@lines){
-      next unless /(\w+)\s+(-?\d+\.?\d*)/;
+      next unless m/
+        (\w+)        # $1: variable name
+        (?:
+          \s+        # whitespace
+            |        #   OR
+          \s*=\s*    # equals with optional whitespace
+        )
+        (            # $2
+          [-+]?      # optional sign
+          \d+        # whole number part
+          \.?        # optional decimal place
+          \d*        # optional decimal part
+        )
+      /x;
       $vars{$1} = $2;
     }
 
@@ -62,7 +75,7 @@ sub parse_string {
 sub write_string {
     my ($class, $mol, %opts) = @_;
 
-    %opts = (symbol => 1, vars => 1, bfs => 0, sort => 1, skip_build=>0, %opts);
+    %opts = (symbol => 1, vars => 1, vars_sep => 0, bfs => 0, sort => 1, skip_build=>0, %opts);
 
     build_zmat($mol, %opts) unless $opts{skip_build};
 
@@ -117,9 +130,10 @@ sub write_string {
     if( $opts{vars} ){
       # provide the variable definitions
       $s .= "\n";
-      $s .= join "", map { sprintf "  B%-4d %25.8f\n", $_+1, $bonds[$_]     } 0..$#bonds;
-      $s .= join "", map { sprintf "  A%-4d %25.8f\n", $_+1, $angles[$_]    } 0..$#angles;
-      $s .= join "", map { sprintf "  D%-4d %25.8f\n", $_+1, $dihedrals[$_] } 0..$#dihedrals;
+      my $fmt = "  %s%-4d" . ($opts{vars_sep}?'=':' ') . "%25.8f\n";
+      $s .= join "", map { sprintf $fmt, 'B', $_+1, $bonds[$_]     } 0..$#bonds;
+      $s .= join "", map { sprintf $fmt, 'A', $_+1, $angles[$_]    } 0..$#angles;
+      $s .= join "", map { sprintf $fmt, 'D', $_+1, $dihedrals[$_] } 0..$#dihedrals;
     }
 
     return $s;
@@ -135,7 +149,7 @@ Chemistry::File::InternalCoords - Internal coordinates (z-matrix) molecule forma
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 =head1 SYNOPSIS
 
@@ -200,6 +214,10 @@ If on (default) uses the element instead of the atomic number
 =item vars
 
 if on (default) uses variables for the bond lengths & angles) options, which affect the output.
+
+=item vars_sep
+
+if on (defaults to off) with put an '=' between variable names and values.  only used when I<vars> option is enabled.
 
 =item skip_build
 
